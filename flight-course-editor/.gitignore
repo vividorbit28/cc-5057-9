@@ -1,0 +1,10 @@
+# Re-include the vendored three.js build (root .gitignore ignores vendor/).
+# These committed files make the editor run fully offline without a bundler.
+!vendor/
+vendor/**
+!vendor/three.module.js
+!vendor/OrbitControls.js
+
+# Local test artifacts
+tests/shots/
+*.log

@@ -1,0 +1,32 @@
+{
+  "name": "flight-course-editor",
+  "version": "1.0.0",
+  "description": "受约束三维飞行航道关卡生成器与编辑视窗（转弯半径/爬升率/净空联合校核）",
+  "type": "module",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node tests/run-tests.js && node tests/scene-test.js && node tests/dom-test.js",
+    "test:kernel": "node tests/run-tests.js",
+    "test:scene": "node tests/scene-test.js",
+    "test:dom": "node tests/dom-test.js",
+    "serve": "npx serve . -l 8080",
+    "start": "python3 -m http.server 8080"
+  },
+  "keywords": [
+    "flight",
+    "trajectory",
+    "three.js",
+    "constrained-curve",
+    "level-editor"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "happy-dom": "^21.0.4"
+  }
+}

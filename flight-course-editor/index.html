@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>飞行航道关卡编辑器 · 受约束空间曲线工程</title>
+  <link rel="stylesheet" href="styles/editor.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header>
+        <h1>飞行航道编辑器</h1>
+        <p class="sub">受约束空间曲线内核 · 转弯半径 / 爬升率 / 空间净空联合校核</p>
+      </header>
+
+      <section class="panel">
+        <h2>关卡样例</h2>
+        <div id="scenario-buttons" class="btn-group"></div>
+        <p id="scenario-desc" class="desc"></p>
+      </section>
+
+      <section class="panel">
+        <h2>规划模式</h2>
+        <div class="mode-row">
+          <label><input type="radio" name="mode" value="A" checked />
+            <span><b>模式 A</b> 固定门位 · 重定航速</span></label>
+          <label><input type="radio" name="mode" value="B" />
+            <span><b>模式 B</b> 锁定航速 · 局部重塑曲线</span></label>
+        </div>
+        <button id="btn-run-mode" class="primary">执行当前模式</button>
+        <p id="mode-status" class="desc"></p>
+      </section>
+
+      <section class="panel">
+        <h2>飞行器包络</h2>
+        <div id="envelope" class="envelope"></div>
+      </section>
+
+      <section class="panel">
+        <h2>回放</h2>
+        <div class="replay-row">
+          <button id="btn-play">▶ 播放</button>
+          <button id="btn-pause">⏸ 暂停</button>
+          <button id="btn-reset">⟲ 复位</button>
+        </div>
+        <label class="slider">
+          回放进度 <input id="seek" type="range" min="0" max="1000" value="0" />
+        </label>
+        <label class="slider">
+          仿真倍速 <input id="rate" type="range" min="0.25" max="3" step="0.25" value="1" />
+          <span id="rate-val">1.0×</span>
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>显示层</h2>
+        <label class="check"><input id="show-ribbon" type="checkbox" checked /> 通道包络带</label>
+        <label class="check"><input id="show-guidance" type="checkbox" checked /> 引导点 / 视导结构</label>
+        <label class="check"><input id="show-attitude" type="checkbox" checked /> 姿态框架</label>
+        <label class="check"><input id="show-volumes" type="checkbox" checked /> 禁止体积</label>
+        <label class="check"><input id="show-clearance" type="checkbox" checked /> 障碍间距标注</label>
+      </section>
+    </aside>
+
+    <main id="viewport">
+      <canvas id="three-canvas"></canvas>
+      <div id="hud">
+        <div id="hud-stats" class="hud-block"></div>
+        <div id="hud-tracking" class="hud-block"></div>
+      </div>
+      <div id="hint" class="hint">
+        拖动 <b>青色控制点</b> 改形 · 拖动 <b>橙色门</b> 移位 · 单击控制点选中后用右侧速度手柄调速
+      </div>
+    </main>
+
+    <aside id="rightbar">
+      <section class="panel">
+        <h2>航道运动与障碍间距</h2>
+        <div id="result-stats"></div>
+      </section>
+      <section class="panel grow">
+        <h2>违反条件区段 <span id="violation-count" class="badge"></span></h2>
+        <div id="violation-list" class="violation-list"></div>
+      </section>
+      <section class="panel">
+        <h2>选中元素</h2>
+        <div id="inspector"><p class="muted">未选中。在视窗中点击控制点或门。</p></div>
+      </section>
+    </aside>
+  </div>
+
+  <script type="module" src="src/editor/main.js"></script>
+</body>
+</html>
