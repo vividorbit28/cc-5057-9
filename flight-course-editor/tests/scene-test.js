@@ -6,7 +6,10 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { CourseScene } from '../src/editor/scene.js';
-import { buildCourse, reshapeWithLockedSpeed, SCENARIOS, V } from '../src/kernel/index.js';
+import {
+  buildCourse, reshapeWithLockedSpeed, rescheduleCourse, compareCurveSolvers,
+  SCENARIOS, V, distanceToVolume,
+} from '../src/kernel/index.js';
 
 let passed = 0;
 const test = (name, fn) => {
@@ -143,6 +146,57 @@ test('拖拽语义：移动控制点后内核重建，门与点坐标同步', ()
   assert.ok(rebuilt.samples.length > 10);
   scene.renderCourse(rebuilt);
   assert.ok(scene.aircraft);
+});
+
+
+test('候选搜索航迹可作为虚线叠加层渲染', () => {
+  const base = built[1];
+  const cmp = compareCurveSolvers({
+    points: base.points, gates: base.gates, volumes: base.volumes, aircraft: base.aircraft,
+  });
+  const scene = new CourseScene(stubCanvas, stubRenderer);
+  scene.candidateDirection = 'curve-first';
+  scene.renderCourse(base, { candidateOverlay: cmp });
+  const g = scene.groups.candidate;
+  assert.ok(g, '缺少候选叠加层组');
+  const lines = countObjects(g, isLine);
+  assert.ok(lines >= 1, '候选航迹缺少虚线');
+  const dots = countObjects(g, (o) => o.isMesh);
+  const seg = cmp.variants.find((v) => v.strategy === 'segmented');
+  assert.equal(dots, seg.points.length, '候选路点数量不符');
+});
+
+test('场景渲染的净空标注与内核最小间距同源', () => {
+  const course = built[1];
+  const scene = new CourseScene(stubCanvas, stubRenderer);
+  scene.renderCourse(course);
+  const nearest = Math.min(...scene.clearanceLabels.map((c) => c.distance));
+  // Labels sample every 10th station, so they can only be >= the per-segment
+  // minimum, never below it; both come from distanceToVolume.
+  assert.ok(nearest >= course.evaluation.stats.minClearance - 1e-6,
+    '标注距离小于内核统计，来源不一致');
+  assert.ok(nearest - course.evaluation.stats.minClearance < 5,
+    '标注与内核统计相差过大，可能来自不同计算');
+  for (const label of scene.clearanceLabels) {
+    const nearestVol = course.volumes
+      .map((v) => ({ id: v.id, d: distanceToVolume(label.pos, v) }))
+      .sort((a, b) => a.d - b.d)[0];
+    assert.ok(Math.abs(nearestVol.d - label.distance) < 1e-6);
+  }
+});
+
+test('调度拒绝的航段会作为红色区段渲染', () => {
+  const base = built[1];
+  const mid = base.gates[Math.floor(base.gates.length / 2)];
+  const w = base.gateWindows.find((x) => x.gateId === mid.id);
+  const open = Math.ceil(w.tMax + 1);
+  const rejected = rescheduleCourse(base, { [mid.id]: { open, close: open + 1 } });
+  const scene = new CourseScene(stubCanvas, stubRenderer);
+  scene.renderCourse(rejected);
+  const reds = scene.groups.ribbon.children.filter(
+    (o) => o.isMesh && o.userData.violation?.type === 'gate-schedule'
+  );
+  assert.ok(reds.length > 0, '调度拒绝未渲染为红色区段');
 });
 
 console.log(`\n${passed} passed`);

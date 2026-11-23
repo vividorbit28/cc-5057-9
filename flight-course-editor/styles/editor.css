@@ -105,3 +105,31 @@ input[type="range"] { accent-color: var(--accent); }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; }
 .pill.error { background: #3a1d1d; color: var(--error); }
 .pill.ok { background: #123328; color: var(--good); }
+
+/* --- gate windows / scheduling --- */
+.gate-table { display: grid; gap: 2px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.gt-head, .gt-row { display: grid; grid-template-columns: 1fr 1.5fr 1.2fr; gap: 6px; padding: 3px 4px; }
+.gt-head { color: var(--muted); border-bottom: 1px solid var(--border); }
+.gt-row { background: #131a24; border-radius: 4px; }
+.gt-row.rejected { background: #2a1717; color: var(--error); }
+#btn-refit-leg { margin-top: 6px; }
+
+/* --- alerts --- */
+.alert-box { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+.alert { padding: 6px 8px; border-radius: 4px; border-left: 3px solid var(--muted); background: #131a24; }
+.alert.error { border-left-color: var(--error); background: #241a1a; }
+.alert.warn { border-left-color: var(--warn); background: #242116; }
+.alert.info { border-left-color: var(--good); }
+
+/* --- comparison / experiment tables --- */
+.compare-table, .experiment-table { display: grid; gap: 2px; font-size: 11px;
+  font-variant-numeric: tabular-nums; margin-top: 8px; }
+.ct-head, .ct-row { display: grid; grid-template-columns: 1.5fr .5fr .8fr .8fr .4fr; gap: 5px; padding: 3px 4px; }
+.ct-head, .et-head { color: var(--muted); border-bottom: 1px solid var(--border); }
+.ct-row { background: #131a24; border-radius: 4px; }
+.ct-row.ok span:nth-child(2) { color: var(--good); }
+.ct-row.bad span:nth-child(2) { color: var(--error); }
+.ct-note, .et-note { color: var(--muted); font-size: 10px; margin-top: 6px; line-height: 1.4; }
+.et-title { color: var(--accent); font-size: 11px; margin: 8px 0 4px; }
+.et-head, .et-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1.4fr; gap: 5px; padding: 3px 4px; }
+.et-row { background: #131a24; border-radius: 4px; }

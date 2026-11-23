@@ -42,6 +42,7 @@ export class CourseScene {
     this.groups = {};
     this.aircraft = null;
     this.clearanceLabels = [];
+    this.candidateDirection = 'curve-first';
   }
 
   _lights() {
@@ -93,6 +94,7 @@ export class CourseScene {
     if (opts.showAttitude !== false) this._buildAttitude(course);
     this._buildAircraft(course);
     if (opts.showClearance !== false) this._buildClearanceLabels(course);
+    if (opts.candidateOverlay) this._buildCandidateOverlay(opts.candidateOverlay);
     this._frameAll();
   }
 
@@ -225,6 +227,38 @@ export class CourseScene {
       this.trail = new THREE.Line(geo,
         new THREE.LineBasicMaterial({ color: COLORS.aircraft, transparent: true, opacity: 0.85 }));
       g.add(this.trail);
+    }
+  }
+
+  // Dashed overlay of the segmented candidate-search route, so the user can
+  // compare the searched geometry against the current flyable course in the
+  // same viewport instead of trusting experiment text.
+  _buildCandidateOverlay(comparison) {
+    const variant = comparison.variants.find(
+      (v) => v.strategy === 'segmented' && v.direction === this.candidateDirection
+    ) ?? comparison.variants.find((v) => v.strategy === 'segmented');
+    if (!variant?.points?.length) return;
+    const g = this._group('candidate');
+    const pts = variant.points.map((p) => new THREE.Vector3(...p));
+    // Sample the candidate spline densely for a fair visual comparison.
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5);
+    const sampled = curve.getPoints(Math.max(pts.length * 12, 80));
+    g.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(sampled),
+      new THREE.LineDashedMaterial({
+        color: 0x22d3ee, dashSize: 3, gapSize: 2, transparent: true, opacity: 0.9,
+      })
+    ));
+    // LineDashedMaterial needs distances computed for the dashes to show.
+    g.children[0].computeLineDistances?.();
+    // Mark candidate waypoints.
+    for (const p of variant.points) {
+      const dot = new THREE.Mesh(
+        new THREE.SphereGeometry(1.2, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0x22d3ee })
+      );
+      dot.position.set(...p);
+      g.add(dot);
     }
   }
 

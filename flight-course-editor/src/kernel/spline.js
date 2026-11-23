@@ -85,17 +85,29 @@ export class Spline {
     );
   }
 
-  // 5-point finite difference derivatives in parameter space.
+  // Analytic first and second derivatives of the Hermite segment containing u.
+  // Sampling by arc length can land on either side of a knot; a finite
+  // difference there straddles a C1 curvature jump and reports a spurious
+  // spike. Evaluating the segment's own Hermite polynomials is exact.
   _derivs(u) {
-    const h = 1e-3;
-    const pM = this.positionAt(u - h);
-    const pP = this.positionAt(u + h);
-    const d1 = V.scale(V.sub(pP, pM), 1 / (2 * h));
-    const pMM = this.positionAt(u - 2 * h);
-    const pPP = this.positionAt(u + 2 * h);
-    const d2 = V.scale(
-      V.add(V.sub(pPP, V.scale(pP, 2)), V.add(V.scale(pM, 2), V.neg(pMM))),
-      1 / (4 * h * h)
+    const n = this.points.length;
+    const uu = clamp(u, 0, n - 1 - eps);
+    const i = Math.min(n - 2, Math.floor(uu));
+    const t = uu - i;
+    const p0 = this.points[i], p1 = this.points[i + 1];
+    const m0 = this.handleAt(i), m1 = this.handleAt(i + 1);
+    const t2 = t * t, t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
+    const dh00 = 6 * t2 - 6 * t, dh10 = 3 * t2 - 4 * t + 1;
+    const dh01 = -6 * t2 + 6 * t, dh11 = 3 * t2 - 2 * t;
+    const ddh00 = 12 * t - 6, ddh10 = 6 * t - 4;
+    const ddh01 = -12 * t + 6, ddh11 = 6 * t - 2;
+    const d1 = [0, 1, 2].map(
+      (k) => dh00 * p0[k] + dh10 * m0[k] + dh01 * p1[k] + dh11 * m1[k]
+    );
+    const d2 = [0, 1, 2].map(
+      (k) => ddh00 * p0[k] + ddh10 * m0[k] + ddh01 * p1[k] + ddh11 * m1[k]
     );
     return { d1, d2 };
   }

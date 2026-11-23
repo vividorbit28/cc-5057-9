@@ -38,6 +38,36 @@ test('RMF 在近直线段不翻滚（up 向量稳定）', () => {
   for (const a of att) assert.ok(a.up[1] > 0.9, '直线段 up 偏离竖直');
 });
 
+// The sampled curvature must be the true geometric curvature. The previous
+// 5-point second-difference had no p(u) term, so it reported noise (a real
+// 14 m arc read as ~57 m) and every curvature-ceiling table was fiction.
+test('采样曲率等于真实几何曲率：精确圆弧读出其半径', () => {
+  const R = 14, n = 32;
+  const pts = [];
+  for (let k = 0; k <= n; k++) {
+    const a = (k / n) * (Math.PI / 2);
+    pts.push([R * Math.sin(a), 0, R - R * Math.cos(a)]);
+  }
+  const sp = new Spline(pts);
+  // Skip the first/last knot: Catmull-Rom end tangents are one-sided there.
+  let maxK = 0;
+  for (let seg = 1; seg < n - 1; seg++) {
+    for (let t = 0.05; t < 0.95; t += 0.05) {
+      const { d1, d2 } = sp._derivs(seg + t);
+      const cross = [
+        d1[1] * d2[2] - d1[2] * d2[1],
+        d1[2] * d2[0] - d1[0] * d2[2],
+        d1[0] * d2[1] - d1[1] * d2[0],
+      ];
+      const k = Math.hypot(...cross) / Math.hypot(...d1) ** 3;
+      if (k > maxK) maxK = k;
+    }
+  }
+  const measured = 1 / maxK;
+  assert.ok(measured > R * 0.97 && measured < R * 1.03,
+    `精确 ${R}m 圆弧读成 ${measured.toFixed(2)}m`);
+});
+
 console.log('# 场景构建与几何包络');
 const built = {};
 for (const make of SCENARIOS) {

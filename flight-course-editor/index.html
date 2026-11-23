@@ -40,6 +40,16 @@
       </section>
 
       <section class="panel">
+        <h2>门可达时间窗与开放调度</h2>
+        <div id="gate-window-table" class="gate-table"></div>
+        <p class="desc">调度器在每个门的可达区间内分配通行窗；缩短某门开放窗时若
+          与可达区间无交集，将拒绝该航段并要求重拟合。</p>
+        <button id="btn-shrink-mid" class="primary">缩短中门开放窗（触发拒绝）</button>
+        <button id="btn-refit-leg">重拟合被拒航段</button>
+        <p id="schedule-status" class="desc"></p>
+      </section>
+
+      <section class="panel">
         <h2>飞行器包络</h2>
         <div id="envelope" class="envelope"></div>
       </section>
@@ -68,6 +78,23 @@
         <label class="check"><input id="show-volumes" type="checkbox" checked /> 禁止体积</label>
         <label class="check"><input id="show-clearance" type="checkbox" checked /> 障碍间距标注</label>
       </section>
+
+      <section class="panel">
+        <h2>航道构造策略（曲线求解比较）</h2>
+        <label class="check"><input id="cs-candidates" type="checkbox" /> 叠加分段候选搜索的航迹</label>
+        <label class="check"><input id="cs-reverse" type="checkbox" /> 以飞行门反向约束曲率</label>
+        <button id="btn-construct" class="primary">用当前策略重建航道</button>
+        <button id="btn-compare">比较四种策略（曲率 / 净空 / 门序）</button>
+        <div id="compare-table" class="compare-table"></div>
+        <p id="construct-status" class="desc"></p>
+      </section>
+
+      <section class="panel">
+        <h2>实验：曲率上限与碰撞距离</h2>
+        <button id="btn-experiments">复算急弯 / 狭窄禁区实验</button>
+        <div id="experiment-table" class="experiment-table"></div>
+        <p id="experiment-status" class="desc"></p>
+      </section>
     </aside>
 
     <main id="viewport">
@@ -85,6 +112,10 @@
       <section class="panel">
         <h2>航道运动与障碍间距</h2>
         <div id="result-stats"></div>
+      </section>
+      <section class="panel">
+        <h2>异常提示</h2>
+        <div id="alert-box" class="alert-box"></div>
       </section>
       <section class="panel grow">
         <h2>违反条件区段 <span id="violation-count" class="badge"></span></h2>

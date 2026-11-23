@@ -138,7 +138,8 @@ function checkVolumes(volumes, samples, craftRadius) {
       const clear = segmentClearance(samples[i].pos, samples[i + 1].pos, vol);
       if (clear < craftRadius) {
         violations.push({
-          type: 'volume-clearance', severity: clear <= 0 ? 'error' : 'warning',
+          // Clearance below the collision radius IS a collision, not a hint.
+          type: 'volume-clearance', severity: 'error',
           volumeId: vol.id, s0: samples[i].s, s1: samples[i + 1].s,
           clearance: clear,
           message: `障碍 ${vol.id} 净空 ${clear.toFixed(2)}m < 碰撞半径 ${craftRadius}m`,
@@ -306,6 +307,20 @@ export function evaluateCourse(course) {
   ));
   const segments = aggregateSegments(violations);
   const errors = violations.filter((v) => v.severity === 'error');
+  // Actual minimum obstacle clearance, computed from segment clearances on the
+  // sampled path. The editor shows this number directly; it is never inferred
+  // from whether a violation was emitted.
+  let minClearance = null;
+  let minClearanceVolumeId = null;
+  for (const vol of volumes ?? []) {
+    for (let i = 0; i < course.samples.length - 1; i++) {
+      const clear = segmentClearance(course.samples[i].pos, course.samples[i + 1].pos, vol);
+      if (minClearance == null || clear < minClearance) {
+        minClearance = clear;
+        minClearanceVolumeId = vol.id;
+      }
+    }
+  }
   return {
     feasible: errors.length === 0,
     violations,
@@ -319,6 +334,9 @@ export function evaluateCourse(course) {
         return 1 / k;
       })(),
       maxClimb: Math.max(0, ...course.samples.map((s) => Math.abs(s.climbAngle))),
+      minClearance,
+      minClearanceVolumeId,
+      craftRadius,
       errorCount: errors.length,
       warningCount: violations.length - errors.length,
     },

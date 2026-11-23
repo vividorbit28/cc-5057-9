@@ -124,5 +124,58 @@ if (firstViolation) {
   check('点击违规行不抛异常', !threw);
 }
 
+
+// --- gate windows / scheduling ---
+check('门可达时间窗表已渲染', document.querySelectorAll('#gate-window-table .gt-row').length > 0);
+const winRowsBefore = document.querySelectorAll('#gate-window-table .gt-row').length;
+document.getElementById('btn-shrink-mid').click();
+await new Promise((r) => setTimeout(r, 20));
+check('缩短中门开放窗后调度给出拒绝文案',
+  /拒绝|重拟合/.test(document.getElementById('schedule-status').textContent),
+  document.getElementById('schedule-status').textContent);
+check('被拒航段在时间窗表中标记为未分配',
+  document.querySelectorAll('#gate-window-table .gt-row.rejected').length > 0);
+check('异常提示区显示调度不可行',
+  /调度不可行|重拟合/.test(document.getElementById('alert-box').textContent));
+document.getElementById('btn-refit-leg').click();
+await new Promise((r) => setTimeout(r, 20));
+check('重拟合按钮给出结论（应用或保留旧关卡）',
+  /重拟合|保留旧关卡|没有需要/.test(document.getElementById('schedule-status').textContent));
+
+// --- curve solver comparison ---
+document.querySelectorAll('.scenario-btn')[1].click();
+await new Promise((r) => setTimeout(r, 20));
+document.getElementById('btn-compare').click();
+await new Promise((r) => setTimeout(r, 20));
+const ctRows = document.querySelectorAll('#compare-table .ct-row').length;
+check('比较表列出四种策略', ctRows === 4, `rows=${ctRows}`);
+check('比较表含待验假设单列',
+  /待验假设/.test(document.getElementById('compare-table').textContent));
+check('比较结论写入状态区',
+  /首选|所有策略均不可行/.test(document.getElementById('construct-status').textContent));
+document.getElementById('cs-candidates').click();
+await new Promise((r) => setTimeout(r, 20));
+check('候选叠加层可由复选框驱动', document.getElementById('cs-candidates').checked === true);
+check('叠加层生成候选航迹组', !!editor.scene.groups.candidate);
+
+// --- experiments ---
+document.getElementById('btn-experiments').click();
+await new Promise((r) => setTimeout(r, 20));
+check('实验表渲染急弯与狭窄禁区',
+  document.querySelectorAll('#experiment-table .et-row').length >= 10);
+check('实验状态声明代码复算',
+  /复算/.test(document.getElementById('experiment-status').textContent));
+
+// --- reconstruction strategy ---
+document.getElementById('cs-reverse').click();
+document.getElementById('btn-construct').click();
+await new Promise((r) => setTimeout(r, 20));
+check('以门反向约束曲率重建给出结论',
+  /已重建|未通过|保留/.test(document.getElementById('construct-status').textContent));
+
+// --- clearance is reported as an actual number ---
+check('结果区显示最小障碍间距数值',
+  /最小障碍间距/.test(document.getElementById('result-stats').textContent));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

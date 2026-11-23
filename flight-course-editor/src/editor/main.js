@@ -6,6 +6,8 @@ import { CourseScene } from './scene.js';
 import { Interaction } from './interaction.js';
 import {
   buildCourse, rebuildFromPoints, replanSpeed, reshapeWithLockedSpeed,
+  applyConstruction, rescheduleCourse, refitRejectedLeg,
+  constructFlightGeometry, compareCurveSolvers, runCurveExperiments,
   SCENARIOS, V,
 } from '../kernel/index.js';
 
@@ -27,7 +29,11 @@ class Editor {
       showRibbon: true, showGuidance: true, showAttitude: true,
       showVolumes: true, showClearance: true,
     };
+    this.compareResult = null;
+    this.showCandidateOverlay = false;
+    this.constructDirection = 'curve-first';
     this._bindUI();
+    this.scene.candidateDirection = this.constructDirection;
     this.loadScenario(0);
     this.interaction = new Interaction(this.scene, this.canvas, {
       onDrag: (kind, index, pos, end) => this.handleDrag(kind, index, pos, end),
@@ -72,6 +78,103 @@ class Editor {
     layers.forEach(([id, group]) => {
       $(id).onchange = (e) => this.scene.setLayerVisible(group, e.target.checked);
     });
+    $('btn-shrink-mid').onclick = () => this.shrinkMiddleGateWindow();
+    $('btn-refit-leg').onclick = () => this.refitRejectedLeg();
+    $('btn-construct').onclick = () => this.reconstruct();
+    $('btn-compare').onclick = () => this.compareStrategies();
+    $('btn-experiments').onclick = () => this.runExperiments();
+    $('cs-candidates').onchange = (e) => {
+      this.showCandidateOverlay = e.target.checked;
+      if (this.showCandidateOverlay && !this.compareResult) this.compareStrategies();
+      else this.refresh();
+    };
+    $('cs-reverse').onchange = (e) => {
+      this.constructDirection = e.target.checked ? 'gate-reverse' : 'curve-first';
+      if (this.scene) this.scene.candidateDirection = this.constructDirection;
+    };
+  }
+
+  // Shorten the middle gate's opening window so it no longer intersects the
+  // reachable arrival interval. The kernel rejects the affected leg; the UI
+  // must show that, not a smooth line that pretends the schedule still works.
+  shrinkMiddleGateWindow() {
+    if (!this.course?.gateWindows?.length) return;
+    const mid = this.course.gates[Math.floor(this.course.gates.length / 2)];
+    const w = this.course.gateWindows.find((x) => x.gateId === mid.id);
+    // Keep a one-second window that opens after the latest reachable arrival:
+    // the gate is physically unreachable within it, so the leg must be refit.
+    const open = Math.ceil((w?.tMax ?? 0) + 1);
+    this.course = rescheduleCourse(this.course, { [mid.id]: { open, close: open + 1 } });
+    $('schedule-status').textContent = this.course.schedule.feasible
+      ? '缩短后的开放窗仍可调度（无需重拟合）。'
+      : `已拒绝：${this.course.rejectedLeg?.reason ?? '调度不可行'}。可点击“重拟合被拒航段”。`;
+    this.refresh();
+  }
+
+  refitRejectedLeg() {
+    if (!this.course?.requiresRefit) {
+      $('schedule-status').textContent = '当前没有需要重拟合的被拒航段。';
+      return;
+    }
+    const r = refitRejectedLeg(this.course, { direction: this.constructDirection });
+    if (r.applied) {
+      this.course = r.course;
+      $('schedule-status').textContent = r.reason;
+    } else {
+      // Keep old course; surface which constraint blocked the refit.
+      $('schedule-status').textContent = r.reason;
+    }
+    this.refresh();
+  }
+
+  reconstruct() {
+    if (!this.course) return;
+    const result = constructFlightGeometry({
+      points: this.course.points,
+      gates: this.course.gates,
+      volumes: this.course.volumes,
+      aircraft: this.course.aircraft,
+      strategy: this.showCandidateOverlay ? 'segmented' : 'control-point',
+      direction: this.constructDirection,
+      repair: true,
+    });
+    if (result.feasible) {
+      this.course = applyConstruction(this.course, result);
+      $('construct-status').textContent =
+        `已重建（${result.strategy} / ${result.direction}）：几何与门序均满足。`;
+    } else {
+      // Do not replace a flyable course with a failed construction.
+      $('construct-status').textContent =
+        `该策略未通过校核（越界 ${(result.metrics.maxOvershoot * 100).toFixed(0)}%，` +
+        `${result.metrics.affectedSegments} 段受影响${result.gateOrderOk ? '' : '，门序被破坏'}），保留当前航道。`;
+    }
+    this.refresh();
+  }
+
+  compareStrategies() {
+    if (!this.course) return;
+    this.compareResult = compareCurveSolvers({
+      points: this.course.points,
+      gates: this.course.gates,
+      volumes: this.course.volumes,
+      aircraft: this.course.aircraft,
+    });
+    this._renderCompare();
+    const p = this.compareResult.preferred;
+    $('construct-status').textContent = p
+      ? `首选：${p.strategy} / ${p.direction}（最大越界 ${(p.maxOvershoot * 100).toFixed(0)}%）。` +
+        '待验假设已单列，未并入结论。'
+      : '所有策略均不可行；保留原航道，不伪报可飞。';
+    this.refresh();
+  }
+
+  runExperiments() {
+    const r = runCurveExperiments();
+    this.experimentResult = r;
+    this._renderExperiments();
+    $('experiment-status').textContent =
+      `已用代码复算：急弯 ${r.sharp.rows.length} 点、狭窄禁区 ${r.narrow.rows.length} 点。` +
+      '表中数值为实际运算结果。';
   }
 
   loadScenario(i) {
@@ -96,12 +199,130 @@ class Editor {
   // Rebuild the scene + every panel from kernel data.
   refresh() {
     this.scene.resize();
-    this.scene.renderCourse(this.course, this.layerOpts);
+    this.scene.renderCourse(this.course, {
+      ...this.layerOpts,
+      candidateOverlay: this.showCandidateOverlay ? this.compareResult : null,
+    });
     this._renderEnvelope();
     this._renderResults();
     this._renderViolations();
     this._renderHud();
+    this._renderGateWindows();
+    this._renderAlerts();
     this._seekAircraft();
+  }
+
+  _renderGateWindows() {
+    const rows = this.course.gateWindows ?? [];
+    const alloc = new Map((this.course.schedule?.allocations ?? []).map((a) => [a.gateId, a]));
+    const rejectedId = this.course.schedule?.rejectedLeg?.to ?? null;
+    if (!rows.length) { $('gate-window-table').innerHTML = '<p class="muted">无门。</p>'; return; }
+    const head = '<div class="gt-head"><span>门</span><span>可达 [tMin, tMax] s</span>' +
+      '<span>分配通行窗 s</span></div>';
+    const body = rows.map((w) => {
+      const a = alloc.get(w.gateId);
+      // Only the gate whose leg the scheduler rejected is marked; gates whose
+      // window was never closed by the backward pass show their forward start.
+      const cls = w.gateId === rejectedId ? 'gt-row rejected' : 'gt-row';
+      let win;
+      if (!a) win = '<span class="feasible-no">未分配</span>';
+      else if (a.windowEnd == null) win = `${a.assigned.toFixed(2)} – 待定`;
+      else win = `${a.windowStart.toFixed(2)} – ${a.windowEnd.toFixed(2)}`;
+      return `<div class="${cls}"><span>${w.label ?? w.gateId}</span>` +
+        `<span>${w.tMin.toFixed(2)} – ${w.tMax.toFixed(2)}</span><span>${win}</span></div>`;
+    }).join('');
+    $('gate-window-table').innerHTML = head + body;
+  }
+
+  // Alerts are derived from real kernel output: schedule rejection, clearance
+  // below the collision radius, and tracking failure. Nothing is invented here.
+  _renderAlerts() {
+    const alerts = [];
+    const ev = this.course.evaluation;
+    const stats = ev.stats;
+    if (this.course.requiresRefit || this.course.schedule?.feasible === false) {
+      alerts.push({
+        severity: 'error',
+        text: `门开放窗调度不可行：${this.course.rejectedLeg?.reason ?? '航段需重拟合'}`,
+      });
+    }
+    if (stats.minClearance != null && stats.minClearance < stats.craftRadius) {
+      alerts.push({
+        severity: 'error',
+        text: `最小障碍间距 ${stats.minClearance.toFixed(2)}m < 碰撞半径 ` +
+          `${stats.craftRadius}m（障碍 ${stats.minClearanceVolumeId ?? '?'}）`,
+      });
+    } else if (stats.minClearance != null) {
+      alerts.push({
+        severity: 'info',
+        text: `最小障碍间距 ${stats.minClearance.toFixed(2)}m（障碍 ` +
+          `${stats.minClearanceVolumeId ?? '无'}），碰撞半径 ${stats.craftRadius}m。`,
+      });
+    }
+    const sim = this.course.simulation;
+    if (sim && !sim.finished) {
+      alerts.push({ severity: 'error', text: '仿真未能跑完全程：' + (sim.failures[0]?.message ?? '跟随失败') });
+    } else if (sim && !sim.withinTolerance) {
+      alerts.push({
+        severity: 'warn',
+        text: `横向峰值偏差 ${sim.tracking.peak.toFixed(2)}m 超容差 ${sim.tracking.tolerance.toFixed(1)}m`,
+      });
+    }
+    if (this.course.gateWindowsFeasible === false) {
+      alerts.push({ severity: 'error', text: `门可达区间不可行：${this.course.gateWindowsReason}` });
+    }
+    const box = $('alert-box');
+    if (!alerts.length) {
+      box.innerHTML = '<p class="muted">无异常：调度、净空、跟随均在包络内。</p>';
+      return;
+    }
+    box.innerHTML = alerts.map((a) =>
+      `<div class="alert ${a.severity}">${a.text}</div>`).join('');
+  }
+
+  _renderCompare() {
+    const res = this.compareResult;
+    if (!res) { $('compare-table').innerHTML = ''; return; }
+    const head = '<div class="ct-head"><span>策略</span><span>可行</span><span>曲率上限</span>' +
+      '<span>碰撞距离</span><span>门序</span></div>';
+    const body = res.variants.map((v) => {
+      const cls = v.feasible ? 'ct-row ok' : 'ct-row bad';
+      const curv = `R≥${v.minRadius.toFixed(0)}m`;
+      const clear = v.minClearance == null ? '—' : `${v.minClearance.toFixed(1)}m`;
+      return `<div class="${cls}"><span>${v.strategy}/${v.direction}</span>` +
+        `<span>${v.feasible ? '是' : '否'}</span><span>${curv}</span>` +
+        `<span>${clear}</span><span>${v.gateOrderOk ? '✓' : '✗'}</span></div>`;
+    }).join('');
+    const note = res.pendingAssumptions.length
+      ? `<div class="ct-note">比较按巡航速度换算曲率预算；本航道可飞性另由逐站速度规划判定` +
+        `（弯道处会减速）。两者口径不同，故本表可能显示“否”而结果区仍“可行”。</div>` +
+        `<div class="ct-note">待验假设：${res.pendingAssumptions.join('；')}</div>` : '';
+    $('compare-table').innerHTML = head + body + note;
+  }
+
+  _renderExperiments() {
+    const r = this.experimentResult;
+    if (!r) { $('experiment-table').innerHTML = ''; return; }
+    // A straight segment has zero sampled curvature, so 1/kappa overflows.
+    // Show it as "直" (unbounded radius) instead of a fake 1e9.
+    const curvatureLabel = (radius, kappa) => {
+      if (kappa != null && kappa <= 1e-6) return '直';
+      if (!Number.isFinite(radius) || radius >= 1e6) return '直';
+      return radius.toFixed(0);
+    };
+    const block = (spec) => {
+      const head = `<div class="et-title">${spec.title}</div>` +
+        `<div class="et-head"><span>${spec.param}${spec.unit ? ' / ' + spec.unit : ''}</span>` +
+        '<span>最小半径 m</span><span>最小间距 m</span><span>首选</span></div>';
+      const rows = spec.rows.map((row) => `<div class="et-row"><span>${row.value}</span>` +
+        `<span>${curvatureLabel(row.authoredMinRadius, row.authoredMaxCurvature)}</span>` +
+        `<span>${row.authoredMinClearance == null ? '—' : row.authoredMinClearance.toFixed(2)}</span>` +
+        `<span>${row.best ? row.best.strategy + '/' + row.best.direction : '—'}</span></div>`).join('');
+      return head + rows;
+    };
+    $('experiment-table').innerHTML =
+      block(r.sharp) + block(r.narrow) +
+      `<div class="et-note">数值由 runCurveExperiments() 实时计算，可在测试中逐行复检。</div>`;
   }
 
   handleDrag(kind, index, pos, end) {
@@ -218,6 +439,9 @@ class Editor {
       ['航道总长', `${e.stats.length.toFixed(0)} m`],
       ['最小转弯半径', `${e.stats.minRadius.toFixed(1)} m`],
       ['最大爬升角', `${(e.stats.maxClimb * 180 / Math.PI).toFixed(1)}°`],
+      ['最小障碍间距', e.stats.minClearance == null ? '—'
+        : `${e.stats.minClearance.toFixed(2)} m <span class="muted">(${e.stats.minClearanceVolumeId ?? '—'})</span>`],
+      ['碰撞半径', `${e.stats.craftRadius} m`],
       ['可飞性', e.feasible ? '<span class="feasible-yes">可行</span>' : '<span class="feasible-no">不可行</span>'],
       ['仿真完成', sim.finished ? '<span class="feasible-yes">是</span>' : '<span class="feasible-no">否</span>'],
       ['仿真耗时', `${sim.time.toFixed(1)} s`],
@@ -306,7 +530,11 @@ class Editor {
 }
 
 // Boot in the browser. Tests import { Editor } and inject a GL-free scene.
-export function bootEditor(options) { return new Editor(options); }
+export function bootEditor(options) {
+  const editor = new Editor(options);
+  if (typeof window !== 'undefined') window.__editor = editor;
+  return editor;
+}
 export { Editor };
 
 if (typeof document !== 'undefined' && !globalThis.__FLIGHT_EDITOR_NO_AUTOBOOT__) {
